@@ -1,0 +1,11 @@
+.ruff_cache
+.venv
+library
+src/__pycache__
+src/commands/__pycache__
+src/graphics/__pycache__
+src/graphics/items/__pycache__
+src/model/__pycache__
+src/simulation/__pycache__
+src/ui/__pycache__
+tests
