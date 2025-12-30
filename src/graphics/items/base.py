@@ -105,7 +105,7 @@ class GateItem(QGraphicsRectItem):
             painter.setPen(Qt.NoPen)
             for i, rect in enumerate(segs):
                 val = self.node.inputs[i].value if i < len(self.node.inputs) else LogicState.LOW
-                painter.setBrush(QBrush(Qt.red if val == LogicState.HIGH else Qt.darkRed))
+                painter.setBrush(QBrush(SEGMENT_ON_COLOR if val == LogicState.HIGH else SEGMENT_OFF_COLOR))
                 painter.drawRoundedRect(rect, 2, 2)
 
     def itemChange(self, change, value):
