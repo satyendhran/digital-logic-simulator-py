@@ -1,6 +1,7 @@
 from PySide6.QtGui import QColor
 
 GRID_SIZE = 20
+WIRE_GRID_SIZE = GRID_SIZE // 2
 GRID_COLOR_LIGHT = QColor(60, 60, 60)
 GRID_COLOR_DARK = QColor(40, 40, 40)
 BACKGROUND_COLOR = QColor(30, 30, 30)

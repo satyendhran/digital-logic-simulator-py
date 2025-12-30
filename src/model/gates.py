@@ -157,3 +157,71 @@ class OutputBulb(Node):
 
     def compute(self):
         self.active = self.inputs[0].value == LogicState.HIGH
+
+
+class SevenSegmentDisplay(Node):
+    def __init__(self):
+        super().__init__("7SEG")
+        self.is_seven_segment = True
+        for _ in range(7):
+            self.add_input()
+        self.add_output()
+
+    def compute(self):
+        on = any(p.value == LogicState.HIGH for p in self.inputs)
+        self.outputs[0].set_value(LogicState.HIGH if on else LogicState.LOW)
+
+
+class SevenSegmentDecoder(Node):
+    def __init__(self):
+        super().__init__("7DEC")
+        for _ in range(4):
+            self.add_input()
+        for _ in range(7):
+            self.add_output()
+
+    def compute(self):
+        vals = [pin.value for pin in self.inputs]
+        if any(v == LogicState.UNDEFINED for v in vals):
+            for o in self.outputs:
+                o.set_value(LogicState.UNDEFINED)
+            return
+        b0 = 1 if vals[0] == LogicState.HIGH else 0
+        b1 = 1 if vals[1] == LogicState.HIGH else 0
+        b2 = 1 if vals[2] == LogicState.HIGH else 0
+        b3 = 1 if vals[3] == LogicState.HIGH else 0
+        n = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0
+        table = {
+            0: (1, 1, 1, 1, 1, 1, 0),
+            1: (0, 1, 1, 0, 0, 0, 0),
+            2: (1, 1, 0, 1, 1, 0, 1),
+            3: (1, 1, 1, 1, 0, 0, 1),
+            4: (0, 1, 1, 0, 0, 1, 1),
+            5: (1, 0, 1, 1, 0, 1, 1),
+            6: (1, 0, 1, 1, 1, 1, 1),
+            7: (1, 1, 1, 0, 0, 0, 0),
+            8: (1, 1, 1, 1, 1, 1, 1),
+            9: (1, 1, 1, 1, 0, 1, 1),
+        }
+        segs = table.get(n, (0, 0, 0, 0, 0, 0, 0))
+        for i, val in enumerate(segs):
+            self.outputs[i].set_value(LogicState.HIGH if val == 1 else LogicState.LOW)
+
+
+class TriStateBuffer(Node):
+    def __init__(self):
+        super().__init__("BUFZ")
+        self.add_input()   # D
+        self.add_input()   # EN
+        self.add_output()  # Q
+
+    def compute(self):
+        d = self.inputs[0].value
+        en = self.inputs[1].value
+        if en == LogicState.UNDEFINED or d == LogicState.UNDEFINED:
+            self.outputs[0].set_value(LogicState.UNDEFINED)
+            return
+        if en == LogicState.HIGH:
+            self.outputs[0].set_value(LogicState.HIGH if d == LogicState.HIGH else LogicState.LOW)
+        else:
+            self.outputs[0].set_value(LogicState.UNDEFINED)

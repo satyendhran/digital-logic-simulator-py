@@ -3,13 +3,8 @@ import os
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QAction, QUndoStack
-from PySide6.QtWidgets import (
-    QFileDialog,
-    QInputDialog,
-    QMainWindow,
-    QMessageBox,
-    QToolBar,
-)
+from PySide6.QtWidgets import (QFileDialog, QInputDialog, QMainWindow,
+                               QMessageBox, QToolBar)
 
 from src.commands.actions import AddGateCommand, DeleteGateCommand
 from src.graphics.items.base import GateItem
@@ -17,14 +12,9 @@ from src.graphics.items.wire import WireItem
 from src.graphics.scene import LogicScene
 from src.graphics.view import LogicView
 from src.model.circuit import Circuit
-from src.model.gates import (
-    AndGate,
-    CustomGate,
-    InputSwitch,
-    NotGate,
-    OrGate,
-    OutputBulb,
-)
+from src.model.gates import (AndGate, CustomGate, InputSwitch, NotGate, OrGate,
+                             OutputBulb, SevenSegmentDecoder,
+                             SevenSegmentDisplay, TriStateBuffer)
 from src.model.serializer import CircuitSerializer
 from src.simulation.engine import SimulationEngine
 from src.ui.library import ComponentLibrary
@@ -56,6 +46,7 @@ class MainWindow(QMainWindow):
 
         self.scene.wire_connected.connect(self.on_wire_connected)
         self.scene.node_triggered.connect(self.on_node_triggered)
+        self.scene.mode_changed.connect(self.on_scene_mode_changed)
         self.simulation.start()
 
         self.startTimer(30)
@@ -66,10 +57,12 @@ class MainWindow(QMainWindow):
     def on_node_triggered(self, node):
         self.simulation.trigger_update(node)
 
-    def on_wire_connected(self, start_port, end_port):
-        self.circuit.connect(start_port.pin, end_port.pin)
-
+    def on_wire_connected(self, start_port, end_port, control_points):
+        from src.commands.actions import WireConnectCommand
+        cmd = WireConnectCommand(self.scene, self.circuit, start_port, end_port, control_points)
+        self.undo_stack.push(cmd)
         self.simulation.trigger_update(start_port.pin.node)
+        self.set_tool("Select")
 
     def _create_actions(self):
         self.exit_act = QAction("Exit", self)
@@ -133,6 +126,9 @@ class MainWindow(QMainWindow):
         toolbar.addAction("NOT").triggered.connect(lambda: self.add_gate("NOT"))
         toolbar.addAction("Switch").triggered.connect(lambda: self.add_gate("Input"))
         toolbar.addAction("Bulb").triggered.connect(lambda: self.add_gate("Output"))
+        toolbar.addAction("7-Seg").triggered.connect(lambda: self.add_gate("7SEG"))
+        toolbar.addAction("7-Dec").triggered.connect(lambda: self.add_gate("7DEC"))
+        toolbar.addAction("BUFZ").triggered.connect(lambda: self.add_gate("BUFZ"))
 
     def _create_docks(self):
         self.library = ComponentLibrary(self)
@@ -148,8 +144,13 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Tool: {tool}")
         if tool == "Select":
             self.view.setDragMode(LogicView.RubberBandDrag)
+            self.view.setCursor(Qt.ArrowCursor)
         else:
             self.view.setDragMode(LogicView.NoDrag)
+            if tool == "Wire":
+                self.view.setCursor(Qt.CrossCursor)
+            else:
+                self.view.setCursor(Qt.ArrowCursor)
 
     def add_gate(self, gate_type):
         node = None
@@ -163,12 +164,30 @@ class MainWindow(QMainWindow):
             node = InputSwitch()
         elif gate_type == "OutputBulb" or gate_type == "Output":
             node = OutputBulb()
+        elif gate_type == "7SEG":
+            node = SevenSegmentDisplay()
+        elif gate_type == "7DEC":
+            node = SevenSegmentDecoder()
+        elif gate_type == "BUFZ":
+            node = TriStateBuffer()
 
         if node:
             cmd = AddGateCommand(self.scene, self.circuit, node, QPointF(100, 100))
             self.undo_stack.push(cmd)
             self.set_tool("Select")
 
+    def on_scene_mode_changed(self, mode):
+        self.current_tool = mode
+        self.statusBar().showMessage(f"Tool: {mode}")
+        if mode == "Select":
+            self.view.setDragMode(LogicView.RubberBandDrag)
+            self.view.setCursor(Qt.ArrowCursor)
+        elif mode == "Wire":
+            self.view.setDragMode(LogicView.NoDrag)
+            self.view.setCursor(Qt.CrossCursor)
+        else:
+            self.view.setDragMode(LogicView.NoDrag)
+            self.view.setCursor(Qt.ArrowCursor)
     def save_circuit(self):
         path, _ = QFileDialog.getSaveFileName(
             self, "Save Circuit", "", "JSON Files (*.json)"

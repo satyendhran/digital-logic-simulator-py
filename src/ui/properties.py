@@ -1,5 +1,6 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDockWidget, QFormLayout, QLabel, QLineEdit, QWidget
+from PySide6.QtWidgets import (QDockWidget, QFormLayout, QLabel, QLineEdit,
+                               QWidget)
 
 from src.graphics.items.base import GateItem
 from src.graphics.items.wire import WireItem

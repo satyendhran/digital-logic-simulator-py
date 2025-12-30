@@ -1,9 +1,11 @@
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QFont, QPen
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsTextItem
+from PySide6.QtWidgets import (QGraphicsItem, QGraphicsRectItem,
+                               QGraphicsTextItem)
 
 from src.constants import *
 from src.graphics.items.port import PortItem
+from src.model.gates import SevenSegmentDisplay
 from src.model.node import LogicState, Node
 
 
@@ -86,6 +88,25 @@ class GateItem(QGraphicsRectItem):
             color = Qt.yellow if self.node.active else Qt.black
             painter.setBrush(QBrush(color))
             painter.drawEllipse(self.width - 25, 20, 15, 15)
+
+        if isinstance(self.node, SevenSegmentDisplay):
+            seg_w = self.width - 16
+            seg_h = self.height - 16
+            base_x = 8
+            base_y = 8
+            segs = []
+            segs.append(QRectF(base_x + 10, base_y, seg_w - 20, 6))  # A top
+            segs.append(QRectF(base_x + seg_w - 6, base_y + 10, 6, seg_h / 2 - 20))  # B upper-right
+            segs.append(QRectF(base_x + seg_w - 6, base_y + seg_h / 2 + 10, 6, seg_h / 2 - 20))  # C lower-right
+            segs.append(QRectF(base_x + 10, base_y + seg_h / 2 - 3, seg_w - 20, 6))  # D middle
+            segs.append(QRectF(base_x, base_y + seg_h / 2 + 10, 6, seg_h / 2 - 20))  # E lower-left
+            segs.append(QRectF(base_x, base_y + 10, 6, seg_h / 2 - 20))  # F upper-left
+            segs.append(QRectF(base_x + 10, base_y + seg_h - 6, seg_w - 20, 6))  # G bottom
+            painter.setPen(Qt.NoPen)
+            for i, rect in enumerate(segs):
+                val = self.node.inputs[i].value if i < len(self.node.inputs) else LogicState.LOW
+                painter.setBrush(QBrush(Qt.red if val == LogicState.HIGH else Qt.darkRed))
+                painter.drawRoundedRect(rect, 2, 2)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionChange:

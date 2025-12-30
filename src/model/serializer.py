@@ -6,14 +6,7 @@ from src.graphics.items.base import GateItem
 from src.graphics.items.wire import WireItem
 from src.graphics.scene import LogicScene
 from src.model.circuit import Circuit
-from src.model.gates import (
-    AndGate,
-    CustomGate,
-    InputSwitch,
-    NotGate,
-    OrGate,
-    OutputBulb,
-)
+from src.model.gates import AndGate, InputSwitch, NotGate, OrGate, OutputBulb
 
 
 class CircuitSerializer:
@@ -82,6 +75,15 @@ class CircuitSerializer:
                 node = InputSwitch()
             elif cls_name == "OutputBulb":
                 node = OutputBulb()
+            elif cls_name == "SevenSegmentDisplay":
+                from src.model.gates import SevenSegmentDisplay
+                node = SevenSegmentDisplay()
+            elif cls_name == "SevenSegmentDecoder":
+                from src.model.gates import SevenSegmentDecoder
+                node = SevenSegmentDecoder()
+            elif cls_name == "TriStateBuffer":
+                from src.model.gates import TriStateBuffer
+                node = TriStateBuffer()
             elif cls_name == "CustomGate":
                 from src.model.gates import CustomGate
                 chip_name = node_data.get("source_chip_name", node_data.get("name"))
