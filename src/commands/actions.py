@@ -42,6 +42,28 @@ class DeleteGateCommand(QUndoCommand):
         self.pos = item.pos()
 
     def redo(self):
+        try:
+            ports = list(getattr(self.item, "input_ports", [])) + list(getattr(self.item, "output_ports", []))
+            for p in ports:
+                for w in list(getattr(p, "wires", [])):
+                    try:
+                        a: Pin = w.start_port.pin
+                        b: Pin = w.end_port.pin if w.end_port else None
+                        if b:
+                            a.disconnect(b)
+                    except Exception:
+                        pass
+                    try:
+                        if w in w.start_port.wires:
+                            w.start_port.wires.remove(w)
+                        if w.end_port and w in w.end_port.wires:
+                            w.end_port.wires.remove(w)
+                    except Exception:
+                        pass
+                    if w.scene():
+                        self.scene.removeItem(w)
+        except Exception:
+            pass
         self.circuit.remove_node(self.node)
         self.scene.removeItem(self.item)
 

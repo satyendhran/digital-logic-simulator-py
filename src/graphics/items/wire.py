@@ -1,5 +1,5 @@
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QPainterPath, QPen
+from PySide6.QtGui import QPainterPath, QPen, QColor
 from PySide6.QtWidgets import (QGraphicsEllipseItem, QGraphicsItem,
                                QGraphicsPathItem)
 
@@ -17,6 +17,7 @@ class WireItem(QGraphicsPathItem):
         self.handles = []
         self.end_pos = None
         self.preview_valid = False
+        self._current_color = QColor(WIRE_COLOR_UNDEFINED)
 
         self.setZValue(Z_VAL_WIRE)
         self.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsFocusable)
@@ -53,19 +54,31 @@ class WireItem(QGraphicsPathItem):
         self._refresh_handles()
 
     def _update_color(self):
-        color = WIRE_COLOR_UNDEFINED
+        target = SIGNAL_UNDEFINED_COLOR
         if self.isSelected():
-            color = WIRE_COLOR_SELECTED
+            target = WIRE_COLOR_SELECTED
         else:
-            state = self.start_port.pin.value
+            # Use the source (OUTPUT) pin value for coloring
+            src_pin = self.start_port.pin
+            if self.end_port and self.end_port.pin.type.name == "OUTPUT":
+                src_pin = self.end_port.pin
+            state = src_pin.value
             if state == LogicState.HIGH:
-                color = WIRE_COLOR_ON
+                target = SIGNAL_HIGH_COLOR
             elif state == LogicState.LOW:
-                color = WIRE_COLOR_OFF
+                target = SIGNAL_LOW_COLOR
             elif state == LogicState.UNDEFINED:
-                color = WIRE_COLOR_UNDEFINED
+                target = SIGNAL_UNDEFINED_COLOR
 
-        pen = QPen(color, WIRE_WIDTH)
+        scene = self.scene()
+        dt = scene.get_frame_ms() if scene and hasattr(scene, "get_frame_ms") else 16.0
+        t = max(0.0, min(1.0, dt / 140.0))
+        self._current_color.setRed(int(self._current_color.red() + (target.red() - self._current_color.red()) * t))
+        self._current_color.setGreen(int(self._current_color.green() + (target.green() - self._current_color.green()) * t))
+        self._current_color.setBlue(int(self._current_color.blue() + (target.blue() - self._current_color.blue()) * t))
+        self._current_color.setAlpha(255)
+
+        pen = QPen(self._current_color, WIRE_WIDTH)
         if self.end_port is None:
             if self.preview_valid:
                 pen.setStyle(Qt.SolidLine)
@@ -76,6 +89,26 @@ class WireItem(QGraphicsPathItem):
     def paint(self, painter, option, widget):
         self._update_color()
         super().paint(painter, option, widget)
+        # Draw glow and directional arrow based on source pin value
+        # Determine source (OUTPUT) and destination (INPUT) ports to orient arrow correctly
+        src_port = self.start_port
+        dst_port = self.end_port if self.end_port else None
+        if self.end_port:
+            if self.start_port.pin.type.name == "INPUT" and self.end_port.pin.type.name == "OUTPUT":
+                src_port = self.end_port
+                dst_port = self.start_port
+        src_val = src_port.pin.value if src_port else LogicState.UNDEFINED
+        if src_val == LogicState.HIGH:
+            scene = self.scene()
+            pulse = scene.get_pulse() if scene and hasattr(scene, "get_pulse") else 0.5
+            glow = QPen(self._current_color)
+            a = int(80 + 100 * pulse)
+            c = glow.color()
+            c.setAlpha(a)
+            glow.setColor(c)
+            glow.setWidth(WIRE_WIDTH + 2)
+            painter.setPen(glow)
+            painter.drawPath(self.path())
 
     def add_control_point(self, pos: QPointF):
         snapped = self._snap_to_grid(pos)

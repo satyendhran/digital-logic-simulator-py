@@ -28,11 +28,13 @@ class Node:
 
     def add_input(self):
         pin = Pin(self, PinType.INPUT, len(self.inputs))
+        pin.name = f"In{len(self.inputs)+1}"
         self.inputs.append(pin)
         return pin
 
     def add_output(self):
         pin = Pin(self, PinType.OUTPUT, len(self.outputs))
+        pin.name = f"Out{len(self.outputs)+1}"
         self.outputs.append(pin)
         return pin
 
@@ -53,6 +55,7 @@ class Pin:
         self.node = node
         self.type = pin_type
         self.index = index
+        self.name = f"P{index}"
         self.connections: List["Pin"] = []
         self.value = LogicState.UNDEFINED
 

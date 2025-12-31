@@ -9,6 +9,8 @@ from src.app import MainWindow
 
 
 def main():
+    os.environ["QT_LOGGING_RULES"] = "qt.gui.font.warning=false"
+
     app = QApplication(sys.argv)
 
     window = MainWindow()

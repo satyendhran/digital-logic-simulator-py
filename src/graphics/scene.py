@@ -1,5 +1,6 @@
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QKeyEvent, QPainter, QPen, QTransform
+from PySide6.QtGui import QKeyEvent, QPainter, QPen, QTransform, QPolygonF, QColor
+import math
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsSceneMouseEvent
 
 from src.constants import *
@@ -24,6 +25,10 @@ class LogicScene(QGraphicsScene):
         self.start_port = None
         self.hover_port = None
         self.active_draw = False
+        self.overlay_enabled = True
+        self._fps = 0.0
+        self._frame_ms = 0.0
+        self._time_ms = 0.0
 
     def set_mode(self, mode):
         self.mode = mode
@@ -87,30 +92,66 @@ class LogicScene(QGraphicsScene):
         left = int(rect.left()) - (int(rect.left()) % self.grid_size)
         top = int(rect.top()) - (int(rect.top()) % self.grid_size)
 
-        lines_light = []
-        lines_dark = []
+        dots_minor = []
+        dots_major = []
+        scale = 1.0
+        try:
+            views = self.views()
+            if views:
+                t = views[0].transform()
+                scale = max(0.1, t.m11())
+        except Exception:
+            scale = 1.0
 
+        step = self.grid_size
         x = left
         while x < rect.right():
-            if x % (self.grid_size * 5) == 0:
-                lines_dark.append(QLineF(x, rect.top(), x, rect.bottom()))
-            else:
-                lines_light.append(QLineF(x, rect.top(), x, rect.bottom()))
-            x += self.grid_size
+            y = top
+            while y < rect.bottom():
+                if (x // step) % 5 == 0 and (y // step) % 5 == 0:
+                    dots_major.append(QPointF(x, y))
+                else:
+                    dots_minor.append(QPointF(x, y))
+                y += step
+            x += step
 
-        y = top
-        while y < rect.bottom():
-            if y % (self.grid_size * 5) == 0:
-                lines_dark.append(QLineF(rect.left(), y, rect.right(), y))
-            else:
-                lines_light.append(QLineF(rect.left(), y, rect.right(), y))
-            y += self.grid_size
+        c_light = GRID_COLOR_LIGHT
+        c_dark = GRID_COLOR_DARK
+        cl = QColor(c_light)
+        cd = QColor(c_dark)
+        fade = max(0.12, min(1.0, scale))
+        cl.setAlphaF(fade)
+        cd.setAlphaF(min(1.0, fade * 1.2))
+        painter.setPen(QPen(cl, 0))
+        if dots_minor:
+            painter.setBrush(cl)
+            painter.drawPoints(QPolygonF(dots_minor))
+        painter.setPen(QPen(cd, 0))
+        if dots_major:
+            painter.setBrush(cd)
+            painter.drawPoints(QPolygonF(dots_major))
 
-        painter.setPen(QPen(GRID_COLOR_LIGHT, 0.5))
-        painter.drawLines(lines_light)
-
-        painter.setPen(QPen(GRID_COLOR_DARK, 1.0))
-        painter.drawLines(lines_dark)
+        # Performance overlay
+        if self.overlay_enabled:
+            painter.save()
+            painter.setRenderHint(QPainter.TextAntialiasing, True)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(OVERLAY_BG)
+            panel_rect = QRectF(rect.right() - 220, rect.top() + 10, 210, 80)
+            painter.drawRoundedRect(panel_rect, 6, 6)
+            painter.setPen(QPen(OVERLAY_TEXT))
+            nodes = len(getattr(self.parent(), "circuit", None).nodes) if getattr(self.parent(), "circuit", None) else 0
+            lines = [
+                f"FPS: {self._fps:.1f}",
+                f"Frame: {self._frame_ms:.2f} ms",
+                f"Nodes: {nodes}",
+            ]
+            x = panel_rect.x() + 10
+            y = panel_rect.y() + 22
+            for s in lines:
+                painter.drawText(QPointF(x, y), s)
+                y += 20
+            painter.restore()
 
     def snap_to_grid(self, pos: QPointF) -> QPointF:
         x = round(pos.x() / self.grid_size) * self.grid_size
@@ -194,3 +235,14 @@ class LogicScene(QGraphicsScene):
                 best = it
                 best_d = d
         return best
+
+    def update_metrics(self, frame_ms: float, fps: float):
+        self._frame_ms = frame_ms
+        self._fps = fps
+        self._time_ms += frame_ms
+
+    def get_pulse(self) -> float:
+        return 0.5 + 0.5 * math.sin(self._time_ms * 0.01)
+
+    def get_frame_ms(self) -> float:
+        return self._frame_ms

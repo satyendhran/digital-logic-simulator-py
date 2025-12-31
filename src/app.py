@@ -1,7 +1,7 @@
 import json
 import os
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, Qt, QSettings
 from PySide6.QtGui import QAction, QUndoStack
 from PySide6.QtWidgets import (QFileDialog, QInputDialog, QMainWindow,
                                QMessageBox, QToolBar)
@@ -24,6 +24,7 @@ from src.ui.properties import PropertyInspector
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.settings = QSettings("DigitalSim", "DigitalLogicSim")
         self.setWindowTitle("Digital Logic Sim")
         self.resize(1200, 800)
 
@@ -39,6 +40,8 @@ class MainWindow(QMainWindow):
         self._create_menus()
         self._create_toolbars()
         self._create_docks()
+        self._apply_style()
+        self._load_ui_settings()
 
         self.current_tool = "Select"
         self.temp_wire = None
@@ -49,10 +52,7 @@ class MainWindow(QMainWindow):
         self.scene.mode_changed.connect(self.on_scene_mode_changed)
         self.simulation.start()
 
-        self.startTimer(30)
-
-    def timerEvent(self, event):
-        self.scene.update()
+        # Rendering cadence is controlled by LogicView's FPS timer
 
     def on_node_triggered(self, node):
         self.simulation.trigger_update(node)
@@ -95,6 +95,18 @@ class MainWindow(QMainWindow):
 
         self.zoom_out_act = QAction("Zoom Out", self)
         self.zoom_out_act.triggered.connect(lambda: self.view.scale(1 / 1.2, 1 / 1.2))
+        self.backend_gpu_act = QAction("Renderer: GPU", self)
+        self.backend_gpu_act.triggered.connect(lambda: self.view.set_backend("GPU"))
+        self.backend_cpu_act = QAction("Renderer: CPU", self)
+        self.backend_cpu_act.triggered.connect(lambda: self.view.set_backend("CPU"))
+        self.fps_cap_act = QAction("Set FPS Cap…", self)
+        self.fps_cap_act.triggered.connect(self._set_fps_cap)
+        self.overlay_toggle_act = QAction("Toggle Performance Overlay", self)
+        self.overlay_toggle_act.setCheckable(True)
+        self.overlay_toggle_act.setChecked(True)
+        self.overlay_toggle_act.triggered.connect(self._toggle_overlay)
+        self.theme_toggle_act = QAction("Toggle Theme", self)
+        self.theme_toggle_act.triggered.connect(self._toggle_theme)
 
     def _create_menus(self):
         file_menu = self.menuBar().addMenu("File")
@@ -113,16 +125,29 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu("View")
         view_menu.addAction(self.zoom_in_act)
         view_menu.addAction(self.zoom_out_act)
+        view_menu.addSeparator()
+        view_menu.addAction(self.backend_gpu_act)
+        view_menu.addAction(self.backend_cpu_act)
+        view_menu.addSeparator()
+        view_menu.addAction(self.fps_cap_act)
+        view_menu.addAction(self.overlay_toggle_act)
+        view_menu.addSeparator()
+        view_menu.addAction(self.theme_toggle_act)
 
     def _create_toolbars(self):
         toolbar = QToolBar("Tools")
         self.addToolBar(toolbar)
+        toolbar.setMovable(False)
+        toolbar.setObjectName("MainToolbar")
 
         toolbar.addAction("Select").triggered.connect(lambda: self.set_tool("Select"))
         toolbar.addAction("Wire").triggered.connect(lambda: self.set_tool("Wire"))
         toolbar.addSeparator()
         toolbar.addAction("AND").triggered.connect(lambda: self.add_gate("AND"))
         toolbar.addAction("OR").triggered.connect(lambda: self.add_gate("OR"))
+        toolbar.addAction("XOR").triggered.connect(lambda: self.add_gate("XOR"))
+        toolbar.addAction("NAND").triggered.connect(lambda: self.add_gate("NAND"))
+        toolbar.addAction("NOR").triggered.connect(lambda: self.add_gate("NOR"))
         toolbar.addAction("NOT").triggered.connect(lambda: self.add_gate("NOT"))
         toolbar.addAction("Switch").triggered.connect(lambda: self.add_gate("Input"))
         toolbar.addAction("Bulb").triggered.connect(lambda: self.add_gate("Output"))
@@ -151,6 +176,22 @@ class MainWindow(QMainWindow):
                 self.view.setCursor(Qt.CrossCursor)
             else:
                 self.view.setCursor(Qt.ArrowCursor)
+    def _set_fps_cap(self):
+        val, ok = QInputDialog.getInt(self, "FPS Cap", "Frames per second:", 60, 10, 240, 1)
+        if ok:
+            self.view.set_fps_cap(val)
+            self.settings.setValue("ui/fps_cap", val)
+            self.statusBar().showMessage(f"FPS cap set to {val}")
+    def _toggle_overlay(self, checked):
+        self.scene.overlay_enabled = checked
+        self.settings.setValue("ui/overlay", checked)
+        self.scene.update()
+
+    def _toggle_theme(self):
+        cur = self.settings.value("ui/theme", "dark")
+        nxt = "light" if cur == "dark" else "dark"
+        self.settings.setValue("ui/theme", nxt)
+        self._apply_style()
 
     def add_gate(self, gate_type):
         node = None
@@ -158,6 +199,15 @@ class MainWindow(QMainWindow):
             node = AndGate()
         elif gate_type == "OrGate" or gate_type == "OR":
             node = OrGate()
+        elif gate_type == "XorGate" or gate_type == "XOR":
+            from src.model.gates import XorGate
+            node = XorGate()
+        elif gate_type == "NandGate" or gate_type == "NAND":
+            from src.model.gates import NandGate
+            node = NandGate()
+        elif gate_type == "NorGate" or gate_type == "NOR":
+            from src.model.gates import NorGate
+            node = NorGate()
         elif gate_type == "NotGate" or gate_type == "NOT":
             node = NotGate()
         elif gate_type == "InputSwitch" or gate_type == "Input":
@@ -188,6 +238,41 @@ class MainWindow(QMainWindow):
         else:
             self.view.setDragMode(LogicView.NoDrag)
             self.view.setCursor(Qt.ArrowCursor)
+    def _apply_style(self):
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+        except Exception:
+            app = None
+        theme = self.settings.value("ui/theme", "dark")
+        if theme == "light":
+            with open("src/light.qss", "r") as f:
+                qss = f.read()
+        else:
+            with open("src/dark.qss", "r") as f:
+                qss = f.read()
+        if app:
+            app.setStyleSheet(qss)
+
+    def _load_ui_settings(self):
+        fps = int(self.settings.value("ui/fps_cap", 60))
+        self.view.set_fps_cap(fps)
+        overlay = self.settings.value("ui/overlay", True)
+        self.scene.overlay_enabled = bool(overlay) and str(overlay).lower() != "false"
+        self.overlay_toggle_act.setChecked(self.scene.overlay_enabled)
+        try:
+            from src.constants import PORT_SIZE
+            port_size = int(self.settings.value("ui/port_size", PORT_SIZE))
+            for item in self.scene.items():
+                if isinstance(item, GateItem):
+                    for p in item.input_ports:
+                        if hasattr(p, "set_port_size"):
+                            p.set_port_size(port_size)
+                    for p in item.output_ports:
+                        if hasattr(p, "set_port_size"):
+                            p.set_port_size(port_size)
+        except Exception:
+            pass
     def save_circuit(self):
         path, _ = QFileDialog.getSaveFileName(
             self, "Save Circuit", "", "JSON Files (*.json)"
@@ -274,6 +359,9 @@ class MainWindow(QMainWindow):
                 "Output Bulb": "OutputBulb",
                 "AND": "AndGate",
                 "OR": "OrGate",
+                "XOR": "XorGate",
+                "NAND": "NandGate",
+                "NOR": "NorGate",
                 "NOT": "NotGate",
             }
             gate_type = type_map.get(text, text)

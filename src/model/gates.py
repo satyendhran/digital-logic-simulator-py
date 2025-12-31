@@ -116,6 +116,55 @@ class OrGate(Node):
         self.outputs[0].set_value(result)
 
 
+class XorGate(Node):
+    def __init__(self):
+        super().__init__("XOR")
+        self.add_input()
+        self.add_input()
+        self.add_output()
+
+    def compute(self):
+        vals = [p.value for p in self.inputs]
+        if LogicState.UNDEFINED in vals:
+            self.outputs[0].set_value(LogicState.UNDEFINED)
+            return
+        a = 1 if vals[0] == LogicState.HIGH else 0
+        b = 1 if vals[1] == LogicState.HIGH else 0
+        res = a ^ b
+        self.outputs[0].set_value(LogicState.HIGH if res == 1 else LogicState.LOW)
+
+
+class NandGate(Node):
+    def __init__(self):
+        super().__init__("NAND")
+        self.add_input()
+        self.add_input()
+        self.add_output()
+
+    def compute(self):
+        vals = [p.value for p in self.inputs]
+        if LogicState.UNDEFINED in vals:
+            self.outputs[0].set_value(LogicState.UNDEFINED)
+            return
+        res = all(v == LogicState.HIGH for v in vals)
+        self.outputs[0].set_value(LogicState.LOW if res else LogicState.HIGH)
+
+
+class NorGate(Node):
+    def __init__(self):
+        super().__init__("NOR")
+        self.add_input()
+        self.add_input()
+        self.add_output()
+
+    def compute(self):
+        vals = [p.value for p in self.inputs]
+        if LogicState.UNDEFINED in vals:
+            self.outputs[0].set_value(LogicState.UNDEFINED)
+            return
+        res = any(v == LogicState.HIGH for v in vals)
+        self.outputs[0].set_value(LogicState.LOW if res else LogicState.HIGH)
+
 class NotGate(Node):
     def __init__(self):
         super().__init__("NOT")

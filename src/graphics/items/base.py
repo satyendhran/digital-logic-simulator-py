@@ -1,12 +1,15 @@
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QFont, QPen
 from PySide6.QtWidgets import (QGraphicsItem, QGraphicsRectItem,
-                               QGraphicsTextItem)
+                               QGraphicsTextItem, QMenu, QInputDialog,
+                               QColorDialog, QGraphicsDropShadowEffect)
 
 from src.constants import *
 from src.graphics.items.port import PortItem
-from src.model.gates import SevenSegmentDisplay
+from src.model.gates import SevenSegmentDisplay, InputSwitch, OutputBulb
 from src.model.node import LogicState, Node
+
+
 
 
 class GateItem(QGraphicsRectItem):
@@ -20,15 +23,24 @@ class GateItem(QGraphicsRectItem):
             | QGraphicsItem.ItemIsSelectable
             | QGraphicsItem.ItemSendsGeometryChanges
         )
+        self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
 
-        self.setBrush(QBrush(GATE_BODY_COLOR))
+        self.body_color = GATE_BODY_COLOR
+        self.setBrush(QBrush(self.body_color))
         self.setPen(QPen(GATE_BORDER_COLOR, 2))
         self.setZValue(Z_VAL_GATE)
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(16)
+        shadow.setOffset(0, 4)
+        shadow.setColor(Qt.black)
+        self.setGraphicsEffect(shadow)
 
         self.label = QGraphicsTextItem(node.name, self)
         self.label.setDefaultTextColor(Qt.white)
         font = QFont("Segoe UI", 10, QFont.Bold)
         self.label.setFont(font)
+        if not SHOW_DISPLAY_LABELS and isinstance(node, (InputSwitch, OutputBulb, SevenSegmentDisplay)):
+            self.label.setVisible(False)
 
         self.input_ports = []
         self.output_ports = []
@@ -72,22 +84,40 @@ class GateItem(QGraphicsRectItem):
         super().mouseDoubleClickEvent(event)
 
     def paint(self, painter, option, widget):
-        if self.isSelected():
-            self.setPen(QPen(GATE_SELECTED_COLOR, 2))
+        if isinstance(self.node, (InputSwitch, OutputBulb)):
+            painter.save()
+            painter.setPen(Qt.NoPen)
+            if isinstance(self.node, InputSwitch):
+                color = Qt.green if self.node.state == LogicState.HIGH else Qt.red
+                painter.setBrush(QBrush(color))
+            else:
+                v = self.node.inputs[0].value if self.node.inputs else LogicState.UNDEFINED
+                if v == LogicState.HIGH:
+                    painter.setBrush(QBrush(Qt.yellow))
+                elif v == LogicState.LOW:
+                    painter.setBrush(QBrush(Qt.black))
+                else:
+                    painter.setBrush(QBrush(QColor(90, 90, 90)))
+            r = min(self.width, self.height) - 20
+            r = max(16, int(r))
+            cx = self.width / 2
+            cy = self.height / 2
+            painter.drawEllipse(QPointF(cx, cy), r / 2, r / 2)
+            painter.restore()
+            if self.isSelected():
+                scene = self.scene()
+                pulse = scene.get_pulse() if scene and hasattr(scene, "get_pulse") else 0.5
+                sel = QPen(GATE_SELECTED_COLOR, 2 + pulse * 2)
+                painter.setPen(sel)
+                painter.setBrush(Qt.NoBrush)
+                painter.drawEllipse(QPointF(cx, cy), r / 2 + 2, r / 2 + 2)
+            return
         else:
-            self.setPen(QPen(GATE_BORDER_COLOR, 2))
-
-        super().paint(painter, option, widget)
-
-        if hasattr(self.node, "state"):
-            color = Qt.green if self.node.state == LogicState.HIGH else Qt.red
-            painter.setBrush(QBrush(color))
-            painter.drawEllipse(10, 20, 10, 10)
-
-        if hasattr(self.node, "active"):
-            color = Qt.yellow if self.node.active else Qt.black
-            painter.setBrush(QBrush(color))
-            painter.drawEllipse(self.width - 25, 20, 15, 15)
+            if self.isSelected():
+                self.setPen(QPen(GATE_SELECTED_COLOR, 2))
+            else:
+                self.setPen(QPen(GATE_BORDER_COLOR, 2))
+            super().paint(painter, option, widget)
 
         if isinstance(self.node, SevenSegmentDisplay):
             seg_w = self.width - 16
@@ -116,3 +146,19 @@ class GateItem(QGraphicsRectItem):
             y = round(new_pos.y() / grid_size) * grid_size
             return QPointF(x, y)
         return super().itemChange(change, value)
+
+    def contextMenuEvent(self, event):
+        menu = QMenu()
+        rename_act = menu.addAction("Rename")
+        color_act = menu.addAction("Change Color")
+        chosen = menu.exec_(event.screenPos())
+        if chosen == rename_act:
+            text, ok = QInputDialog.getText(None, "Rename Component", "New name:", text=self.node.name)
+            if ok and text:
+                self.node.name = text
+                self.label.setPlainText(text)
+        elif chosen == color_act:
+            col = QColorDialog.getColor(self.body_color, None, "Component Color")
+            if col.isValid():
+                self.body_color = col
+                self.setBrush(QBrush(self.body_color))
